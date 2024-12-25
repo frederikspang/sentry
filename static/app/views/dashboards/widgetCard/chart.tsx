@@ -272,7 +272,7 @@ class WidgetCardChart extends Component<WidgetCardChartProps> {
 
     switch (widget.displayType) {
       case 'bar':
-        return <BarChart {...chartProps} stacked={stacked} />;
+        return <BarChart {...chartProps} stacked={stacked} animation={false} />;
       case 'area':
       case 'top_n':
         return <AreaChart stacked {...chartProps} />;
@@ -388,6 +388,7 @@ class WidgetCardChart extends Component<WidgetCardChartProps> {
 
     const chartOptions = {
       autoHeightResize: shouldResize ?? true,
+      useMultilineDate: true,
       grid: {
         left: 0,
         right: 4,

@@ -69,15 +69,23 @@ import type {TraceTreeNode} from '../../traceModels/traceTreeNode';
 import {useTraceState, useTraceStateDispatch} from '../../traceState/traceStateProvider';
 import {useHasTraceNewUi} from '../../useHasTraceNewUi';
 
-const DetailContainer = styled('div')<{hasNewTraceUi?: boolean}>`
+const BodyContainer = styled('div')<{hasNewTraceUi?: boolean}>`
   display: flex;
   flex-direction: column;
   gap: ${p => (p.hasNewTraceUi ? 0 : space(2))};
-  padding: ${space(1)};
+  padding: ${p => (p.hasNewTraceUi ? `${space(0.5)} ${space(2)}` : space(1))};
+  height: calc(100% - 52px);
+  overflow: auto;
 
   ${DataSection} {
     padding: 0;
   }
+`;
+
+const DetailContainer = styled('div')`
+  height: 100%;
+  overflow: hidden;
+  padding-bottom: ${space(1)};
 `;
 
 const FlexBox = styled('div')`
@@ -113,17 +121,25 @@ function TitleWithTestId(props: PropsWithChildren<{}>) {
   return <Title data-test-id="trace-drawer-title">{props.children}</Title>;
 }
 
-function SubtitleWithCopyButton({text}: {text: string}) {
+function SubtitleWithCopyButton({
+  text,
+  hideCopyButton = false,
+}: {
+  text: string;
+  hideCopyButton?: boolean;
+}) {
   return (
     <SubTitleWrapper>
       <StyledSubTitleText>{text}</StyledSubTitleText>
-      <CopyToClipboardButton
-        borderless
-        size="zero"
-        iconSize="xs"
-        text={text}
-        tooltipProps={{disabled: true}}
-      />
+      {!hideCopyButton ? (
+        <CopyToClipboardButton
+          borderless
+          size="zero"
+          iconSize="xs"
+          text={text}
+          tooltipProps={{disabled: true}}
+        />
+      ) : null}
     </SubTitleWrapper>
   );
 }
@@ -202,6 +218,7 @@ const IconBorder = styled('div')<{backgroundColor: string; errored?: boolean}>`
 `;
 
 const LegacyHeaderContainer = styled(FlexBox)`
+  margin: ${space(1)};
   justify-content: space-between;
   gap: ${space(3)};
   container-type: inline-size;
@@ -226,7 +243,9 @@ const HeaderContainer = styled(FlexBox)`
   align-items: baseline;
   justify-content: space-between;
   gap: ${space(3)};
-  margin-bottom: ${space(2)};
+  padding: ${space(0.25)} 0 ${space(0.5)} 0;
+  margin: 0 ${space(2)} ${space(1)} ${space(2)};
+  border-bottom: 1px solid ${p => p.theme.border};
 `;
 
 const DURATION_COMPARISON_STATUS_COLORS: {
@@ -396,7 +415,7 @@ function Highlights({
   headerContent,
   bodyContent,
 }: HighlightProps) {
-  if (!isTransactionNode(node)) {
+  if (!isTransactionNode(node) && !isSpanNode(node)) {
     return null;
   }
 
@@ -414,9 +433,9 @@ function Highlights({
     <Fragment>
       <HighlightsWrapper>
         <HighlightsLeftColumn>
-          <Tooltip title={node.value.project_slug}>
+          <Tooltip title={node.value?.project_slug}>
             <ProjectBadge
-              project={project ? project : {slug: node.value.project_slug}}
+              project={project ? project : {slug: node.value?.project_slug ?? ''}}
               avatarSize={18}
               hideName
             />
@@ -424,7 +443,9 @@ function Highlights({
           <VerticalLine />
         </HighlightsLeftColumn>
         <HighlightsRightColumn>
-          <HighlightOp>{node.value['transaction.op']}</HighlightOp>
+          <HighlightOp>
+            {isTransactionNode(node) ? node.value?.['transaction.op'] : node.value?.op}
+          </HighlightOp>
           <HighlightsDurationWrapper>
             <HighlightDuration>
               {getDuration(durationInSeconds, 2, true)}
@@ -435,10 +456,10 @@ function Highlights({
               </HiglightsDurationComparison>
             ) : null}
           </HighlightsDurationWrapper>
-          <Panel>
+          <StyledPanel>
             <StyledPanelHeader>{headerContent}</StyledPanelHeader>
             <PanelBody>{bodyContent}</PanelBody>
-          </Panel>
+          </StyledPanel>
           {event ? <HighLightsOpsBreakdown event={event} /> : null}
         </HighlightsRightColumn>
       </HighlightsWrapper>
@@ -447,45 +468,43 @@ function Highlights({
   );
 }
 
+const StyledPanel = styled(Panel)`
+  margin-bottom: 0;
+`;
+
 function HighLightsOpsBreakdown({event}: {event: EventTransaction}) {
   const breakdown = generateStats(event, {type: 'no_filter'});
-  const spansCount =
-    event.entries?.find(entry => entry.type === 'spans')?.data?.length ?? 0;
 
   return (
     <HighlightsOpsBreakdownWrapper>
       <HighlightsSpanCount>
-        {tct('This transaction contains [spansCount] spans', {
-          spansCount,
-        })}
+        {t('Most frequent span ops for this transaction are')}
       </HighlightsSpanCount>
-      {breakdown.slice(0, 5).map(currOp => {
-        const {name, percentage} = currOp;
+      <TopOpsList>
+        {breakdown.slice(0, 3).map(currOp => {
+          const {name, percentage} = currOp;
 
-        const operationName = typeof name === 'string' ? name : t('Other');
-        const color = pickBarColor(operationName);
-        const pctLabel = isFinite(percentage) ? Math.round(percentage * 100) : '∞';
+          const operationName = typeof name === 'string' ? name : t('Other');
+          const color = pickBarColor(operationName);
+          const pctLabel = isFinite(percentage) ? Math.round(percentage * 100) : '∞';
 
-        return (
-          <HighlightsOpRow key={operationName}>
-            <IconCircleFill size="xs" color={color as Color} />
-            {operationName}
-            <HighlightsOpPct>{pctLabel}%</HighlightsOpPct>
-          </HighlightsOpRow>
-        );
-      })}
-      {breakdown.length > 5 ? (
-        <HighlightsOpsBreakdownMoreCount>
-          {tct('+ [moreCount] more', {moreCount: breakdown.length - 5})}
-        </HighlightsOpsBreakdownMoreCount>
-      ) : null}
+          return (
+            <HighlightsOpRow key={operationName}>
+              <IconCircleFill size="xs" color={color as Color} />
+              {operationName}
+              <HighlightsOpPct>{pctLabel}%</HighlightsOpPct>
+            </HighlightsOpRow>
+          );
+        })}
+      </TopOpsList>
     </HighlightsOpsBreakdownWrapper>
   );
 }
 
-const HighlightsOpsBreakdownMoreCount = styled('div')`
-  font-size: 12px;
-  color: ${p => p.theme.subText};
+const TopOpsList = styled('div')`
+  display: flex;
+  flex-direction: row;
+  gap: ${space(1)};
 `;
 
 const HighlightsOpPct = styled('div')`
@@ -506,6 +525,7 @@ const HighlightsOpsBreakdownWrapper = styled(FlexBox)`
   align-items: flex-start;
   flex-direction: column;
   gap: ${space(0.25)};
+  margin-top: ${space(1.5)};
 `;
 
 const HiglightsDurationComparison = styled('div')<{status: string}>`
@@ -541,13 +561,12 @@ const StyledPanelHeader = styled(PanelHeader)`
   padding: 0;
   line-height: normal;
   text-transform: none;
-  font-size: ${p => p.theme.fontSizeMedium};
   overflow: hidden;
 `;
 
 const SectionDivider = styled('hr')`
   border-color: ${p => p.theme.translucentBorder};
-  margin: ${space(1.5)} 0;
+  margin: ${space(3)} 0 ${space(1.5)} 0;
 `;
 
 const VerticalLine = styled('div')`
@@ -562,7 +581,6 @@ const HighlightsWrapper = styled('div')`
   align-items: stretch;
   gap: ${space(1)};
   width: 100%;
-  overflow: hidden;
   margin: ${space(1)} 0;
 `;
 
@@ -1159,6 +1177,7 @@ export const CardContentSubject = styled('div')`
 
 const TraceDrawerComponents = {
   DetailContainer,
+  BodyContainer,
   FlexBox,
   Title: TitleWithTestId,
   Type,
