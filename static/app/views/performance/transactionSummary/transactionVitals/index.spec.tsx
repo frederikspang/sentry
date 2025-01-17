@@ -103,7 +103,7 @@ describe('Performance > Web Vitals', function () {
     mockUseLocation.mockReturnValue(
       LocationFixture({pathname: '/organizations/org-slug/performance/summary'})
     );
-    // eslint-disable-next-line no-console
+
     jest.spyOn(console, 'error').mockImplementation(jest.fn());
 
     MockApiClient.addMockResponse({
@@ -225,20 +225,19 @@ describe('Performance > Web Vitals', function () {
       organization,
     });
 
-    expect(screen.getByRole('navigation')).toHaveTextContent('PerformanceWeb Vitals');
+    expect(screen.getByRole('navigation')).toHaveTextContent(
+      'PerformanceTransaction Summary'
+    );
   });
 
   describe('renders all vitals cards correctly', function () {
     const {organization, router} = initialize();
 
-    beforeEach(() => {
+    it.each(vitals)('Renders %s', async function (vital) {
       render(
         <TransactionVitals organization={organization} location={router.location} />,
         {router, organization}
       );
-    });
-
-    it.each(vitals)('Renders %s', async function (vital) {
       expect(await screen.findByText(vital.heading)).toBeInTheDocument();
       expect(await screen.findByText(vital.baseline)).toBeInTheDocument();
     });
@@ -321,10 +320,13 @@ describe('Performance > Web Vitals', function () {
 
       expect(mockNavigate).toHaveBeenCalledWith({
         query: expect.not.objectContaining(
-          ZOOM_KEYS.reduce((obj, key) => {
-            obj[key] = expect.anything();
-            return obj;
-          }, {})
+          ZOOM_KEYS.reduce(
+            (obj, key) => {
+              obj[key] = expect.anything();
+              return obj;
+            },
+            {} as Record<string, unknown>
+          )
         ),
       });
     });

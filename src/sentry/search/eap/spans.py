@@ -6,7 +6,7 @@ from typing import cast
 
 import sentry_sdk
 from parsimonious.exceptions import ParseError
-from sentry_protos.snuba.v1.request_common_pb2 import RequestMeta
+from sentry_protos.snuba.v1.request_common_pb2 import RequestMeta, TraceItemType
 from sentry_protos.snuba.v1.trace_item_attribute_pb2 import (
     AttributeKey,
     AttributeValue,
@@ -68,6 +68,7 @@ class SearchResolver:
             project_ids=self.params.project_ids,
             start_timestamp=self.params.rpc_start_date,
             end_timestamp=self.params.rpc_end_date,
+            trace_item_type=TraceItemType.TRACE_ITEM_TYPE_SPAN,
         )
 
     @sentry_sdk.trace
@@ -304,7 +305,7 @@ class SearchResolver:
         self,
         column: ResolvedColumn,
         operator: str,
-        value: str | int | datetime | Sequence[int] | Sequence[str],
+        value: str | float | datetime | Sequence[float] | Sequence[str],
     ) -> AttributeValue:
         column.validate(value)
         if isinstance(column.proto_definition, AttributeKey):
@@ -344,6 +345,19 @@ class SearchResolver:
                         )
                 elif isinstance(value, float):
                     return AttributeValue(val_float=value)
+            elif column_type == constants.BOOLEAN:
+                if operator in constants.IN_OPERATORS:
+                    raise InvalidSearchQuery(
+                        f"{column.public_alias} cannot be used with an IN filter"
+                    )
+                elif isinstance(value, str):
+                    lowered_value = value.lower()
+                    if lowered_value not in constants.BOOLEAN_VALUES:
+                        raise InvalidSearchQuery(
+                            f"{value} is not a valid boolean value, expecting true or false"
+                        )
+                    bool_value = lowered_value in constants.TRUTHY_VALUES
+                    return AttributeValue(val_bool=bool_value)
             raise InvalidSearchQuery(
                 f"{value} is not a valid filter value for {column.public_alias}"
             )

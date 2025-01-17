@@ -22,6 +22,7 @@ import {space} from 'sentry/styles/space';
 import type {Team} from 'sentry/types/organization';
 import type {User} from 'sentry/types/user';
 import {defined} from 'sentry/utils';
+import {trackAnalytics} from 'sentry/utils/analytics';
 import useOrganization from 'sentry/utils/useOrganization';
 import {useTeams} from 'sentry/utils/useTeams';
 import {useTeamsById} from 'sentry/utils/useTeamsById';
@@ -86,7 +87,7 @@ function EditAccessSelector({
   }, [dashboard, teamsToRender, isMenuOpen]); // isMenuOpen dependency ensures perms are 'refreshed'
 
   // Handles state change when dropdown options are selected
-  const onSelectOptions = newSelectedOptions => {
+  const onSelectOptions = (newSelectedOptions: any) => {
     let newSelectedValues = newSelectedOptions.map(
       (option: {value: string}) => option.value
     );
@@ -109,7 +110,9 @@ function EditAccessSelector({
         ? // selecting all teams deselects 'all users'
           (newSelectedValues = ['_creator', '_allUsers', ...teamIds])
         : // deselecting any team deselects 'all users'
-          (newSelectedValues = newSelectedValues.filter(value => value !== '_allUsers'));
+          (newSelectedValues = newSelectedValues.filter(
+            (value: any) => value !== '_allUsers'
+          ));
     }
 
     setSelectedOptions(newSelectedValues);
@@ -166,6 +169,7 @@ function EditAccessSelector({
     ) : selectedOptions.length === 2 ? (
       // Case where we display 1 Creator Avatar + 1 Team Avatar
       <StyledAvatarList
+        listonly={listOnly}
         key="avatar-list-2-badges"
         typeAvatars="users"
         users={[dashboardCreator]}
@@ -179,6 +183,7 @@ function EditAccessSelector({
       // Case where we display 1 Creator Avatar + a Badge with no. of teams selected
       <StyledAvatarList
         key="avatar-list-many-teams"
+        listonly={listOnly}
         typeAvatars="users"
         users={Array(selectedOptions.length).fill(dashboardCreator)}
         maxVisibleAvatars={1}
@@ -242,6 +247,16 @@ function EditAccessSelector({
             !isDefaultState &&
             !isEqual(newDashboardPermissions, dashboard.permissions)
           ) {
+            trackAnalytics('dashboards2.edit_access.save', {
+              organization,
+              editable_by: newDashboardPermissions.isEditableByEveryone
+                ? 'all'
+                : newDashboardPermissions.teamsWithEditAccess.length > 0
+                  ? 'team_selection'
+                  : 'owner_only',
+              team_count: newDashboardPermissions.teamsWithEditAccess.length || undefined,
+            });
+
             onChangeEditAccess?.(newDashboardPermissions);
           }
           setMenuOpen(!isMenuOpen);
@@ -282,14 +297,18 @@ function EditAccessSelector({
                 type="new"
                 tooltipProps={{position: 'left', delay: 1000, isHoverable: true}}
               />,
-              t('Edit Access:'),
+              <LabelContainer key="selector-label">{t('Edit Access:')}</LabelContainer>,
               triggerAvatars,
             ]
       }
-      triggerProps={{borderless: listOnly}}
+      triggerProps={{borderless: listOnly, style: listOnly ? {padding: 2} : {}}}
       searchPlaceholder={t('Search Teams')}
       isOpen={isMenuOpen}
-      onOpenChange={() => {
+      onOpenChange={newOpenState => {
+        if (newOpenState === true) {
+          trackAnalytics('dashboards2.edit_access.start', {organization});
+        }
+
         setStagedOptions(selectedOptions);
         setMenuOpen(!isMenuOpen);
       }}
@@ -328,10 +347,14 @@ const StyledDisplayName = styled('div')`
   font-weight: normal;
 `;
 
-const StyledAvatarList = styled(AvatarList)`
-  margin-left: 10px;
-  margin-right: -3px;
+const StyledAvatarList = styled(AvatarList)<{listonly: boolean}>`
+  margin-left: ${space(0.75)};
+  margin-right: ${p => (p.listonly ? 0 : -3)}px;
   font-weight: normal;
+`;
+
+const LabelContainer = styled('div')`
+  margin-right: ${space(1)};
 `;
 
 const StyledFeatureBadge = styled(FeatureBadge)`
@@ -348,6 +371,7 @@ const StyledBadge = styled(Badge)<{size: number}>`
   display: flex;
   justify-content: center;
   align-items: center;
+  margin-left: 0px;
 `;
 
 const FilterButtons = styled(ButtonBar)`

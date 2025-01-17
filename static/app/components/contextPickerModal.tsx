@@ -1,5 +1,4 @@
 import {Component, Fragment} from 'react';
-import {findDOMNode} from 'react-dom';
 import {components} from 'react-select';
 import styled from '@emotion/styled';
 import type {Query} from 'history';
@@ -23,11 +22,7 @@ import Projects from 'sentry/utils/projects';
 import replaceRouterParams from 'sentry/utils/replaceRouterParams';
 import IntegrationIcon from 'sentry/views/settings/organizationIntegrations/integrationIcon';
 
-type Props = ModalRenderProps & {
-  integrationConfigs: Integration[];
-
-  loading: boolean;
-
+type SharedProps = ModalRenderProps & {
   /**
    * Does modal need to prompt for organization.
    * TODO(billy): This can be derived from `nextPath`
@@ -49,6 +44,15 @@ type Props = ModalRenderProps & {
    * @param path type will match nextPath's type {@link Props.nextPath}
    */
   onFinish: (path: string | {pathname: string; query?: Query}) => number | void;
+
+  allowAllProjectsSelection?: boolean;
+};
+
+type Props = SharedProps & {
+  integrationConfigs: Integration[];
+
+  loading: boolean;
+
   /**
    * Callback for when organization is selected
    */
@@ -65,9 +69,11 @@ type Props = ModalRenderProps & {
   organizations: Organization[];
 
   projects: Project[];
-
-  allowAllProjectsSelection?: boolean;
 };
+
+function autoFocusReactSelect(reactSelectRef: any) {
+  reactSelectRef?.select?.focus?.();
+}
 
 const selectStyles: StylesConfig = {
   menu: provided => ({
@@ -116,12 +122,6 @@ class ContextPickerModal extends Component<Props> {
 
   onFinishTimeout: number | undefined = undefined;
 
-  // TODO(ts) The various generics in react-select types make getting this
-  // right hard.
-  orgSelect: any | null = null;
-  projectSelect: any | null = null;
-  configSelect: any | null = null;
-
   // Performs checks to see if we need to prompt user
   // i.e. When there is only 1 org and no project is needed or
   // there is only 1 org and only 1 project (which should be rare)
@@ -150,7 +150,7 @@ class ContextPickerModal extends Component<Props> {
     // If there is only one org and we don't need a project slug, then call finish callback
     if (!needProject) {
       const newPathname = replaceRouterParams(pathname, {
-        orgId: organizations[0].slug,
+        orgId: organizations[0]!.slug,
       });
       this.onFinishTimeout =
         onFinish(
@@ -164,33 +164,18 @@ class ContextPickerModal extends Component<Props> {
     // Use latest org or if only 1 org, use that
     let org = latestOrg;
     if (!org && organizations.length === 1) {
-      org = organizations[0].slug;
+      org = organizations[0]!.slug;
     }
 
     const newPathname = replaceRouterParams(pathname, {
       orgId: org,
-      projectId: projects[0].slug,
-      project: this.props.projects.find(p => p.slug === projects[0].slug)?.id,
+      projectId: projects[0]!.slug,
+      project: this.props.projects.find(p => p.slug === projects[0]!.slug)?.id,
     });
     this.onFinishTimeout =
       onFinish(
         typeof nextPath === 'string' ? newPathname : {...nextPath, pathname: newPathname}
       ) ?? undefined;
-  };
-
-  doFocus = (ref: any | null) => {
-    if (!ref || this.props.loading) {
-      return;
-    }
-
-    // eslint-disable-next-line react/no-find-dom-node
-    const el = findDOMNode(ref) as HTMLElement;
-
-    if (el !== null) {
-      const input = el.querySelector('input');
-
-      input?.focus();
-    }
   };
 
   handleSelectOrganization = ({value}: {value: string}) => {
@@ -286,7 +271,7 @@ class ContextPickerModal extends Component<Props> {
     const projectOptions = [
       {
         label: t('My Projects'),
-        options: memberProjects.map(p => ({
+        options: memberProjects!.map(p => ({
           value: p.slug,
           label: p.slug,
           disabled: false,
@@ -294,7 +279,7 @@ class ContextPickerModal extends Component<Props> {
       },
       {
         label: t('All Projects'),
-        options: nonMemberProjects.map(p => ({
+        options: nonMemberProjects!.map(p => ({
           value: p.slug,
           label: p.slug,
           disabled: allowAllProjectsSelection ? false : !isSuperuser,
@@ -316,10 +301,7 @@ class ContextPickerModal extends Component<Props> {
 
     return (
       <StyledSelectControl
-        ref={(ref: any) => {
-          this.projectSelect = ref;
-          this.doFocus(this.projectSelect);
-        }}
+        ref={autoFocusReactSelect}
         placeholder={t('Select a Project to continue')}
         name="project"
         options={projectOptions}
@@ -338,7 +320,7 @@ class ContextPickerModal extends Component<Props> {
     const options = [
       {
         label: tct('[providerName] Configurations', {
-          providerName: integrationConfigs[0].provider.name,
+          providerName: integrationConfigs[0]!.provider.name,
         }),
         options: integrationConfigs.map(config => ({
           value: config.id,
@@ -354,10 +336,7 @@ class ContextPickerModal extends Component<Props> {
     ];
     return (
       <StyledSelectControl
-        ref={(ref: any) => {
-          this.configSelect = ref;
-          this.doFocus(this.configSelect);
-        }}
+        ref={autoFocusReactSelect}
         placeholder={t('Select a configuration to continue')}
         name="configurations"
         options={options}
@@ -398,18 +377,14 @@ class ContextPickerModal extends Component<Props> {
 
     return (
       <Fragment>
-        <Header closeButton>{this.headerText}</Header>
+        <Header closeButton>
+          <h5>{this.headerText}</h5>
+        </Header>
         <Body>
           {loading && <StyledLoadingIndicator overlay />}
           {needOrg && (
             <StyledSelectControl
-              ref={(ref: any) => {
-                this.orgSelect = ref;
-                if (shouldShowProjectSelector) {
-                  return;
-                }
-                this.doFocus(this.orgSelect);
-              }}
+              ref={shouldShowProjectSelector ? undefined : autoFocusReactSelect}
               placeholder={t('Select an Organization')}
               name="organization"
               options={orgChoices}
@@ -429,16 +404,7 @@ class ContextPickerModal extends Component<Props> {
   }
 }
 
-type ContainerProps = Omit<
-  Props,
-  | 'projects'
-  | 'loading'
-  | 'organizations'
-  | 'organization'
-  | 'onSelectOrganization'
-  | 'integrationConfigs'
-> & {
-  allowAllProjectsSelection?: boolean;
+type ContainerProps = SharedProps & {
   configUrl?: string;
 
   /**

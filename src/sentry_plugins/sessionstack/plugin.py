@@ -7,7 +7,6 @@ from sentry.exceptions import PluginError
 from sentry.integrations.base import FeatureDescription, IntegrationFeatures
 from sentry.interfaces.contexts import ContextType
 from sentry.models.project import Project
-from sentry.plugins.base.configuration import react_plugin_config
 from sentry.plugins.base.v2 import EventPreprocessor, Plugin2
 from sentry.utils.settings import is_self_hosted
 from sentry_plugins.base import CorePluginMixin
@@ -34,10 +33,6 @@ class SessionStackPlugin(CorePluginMixin, Plugin2):
     conf_key = slug
     required_field = "account_email"
 
-    sessionstack_resource_links = [
-        ("Documentation", "http://docs.sessionstack.com/integrations/sentry/")
-    ]
-
     feature_descriptions = [
         FeatureDescription(
             """
@@ -46,12 +41,6 @@ class SessionStackPlugin(CorePluginMixin, Plugin2):
             IntegrationFeatures.SESSION_REPLAY,
         )
     ]
-
-    def get_resource_links(self):
-        return self.resource_links + self.sessionstack_resource_links
-
-    def configure(self, project, request):
-        return react_plugin_config(self, project, request)
 
     def has_project_conf(self):
         return True
